@@ -9,18 +9,64 @@ interface FlipBookViewerProps {
 }
 
 export const FlipBookViewer: React.FC<FlipBookViewerProps> = ({ book, setBook }) => {
-  // 초기 줌 수치를 높여 문서가 더 크게 보이도록 설정
-  const [zoom, setZoom] = useState(0.95);
+  const [zoom, setZoom] = useState(1.0);
   const flipBookRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [currentPage, setCurrentPage] = useState(0);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   const { totalPages, pages, aspectRatio } = book;
 
-  // 페이지 가로/세로 크기 계산 (낱장 기준)
-  const singlePageRatio = (aspectRatio / 2);
-  // 고정 높이를 상향하여 더 큰 캔버스 확보
-  const pageHeight = 950; 
-  const pageWidth = pageHeight * singlePageRatio;
+  const calculateBestFit = useCallback(() => {
+    // 컨테이너가 없으면 window 크기라도 사용
+    const vWidth = window.innerWidth;
+    const vHeight = window.innerHeight;
+    
+    const clientWidth = containerRef.current?.clientWidth || vWidth;
+    const clientHeight = containerRef.current?.clientHeight || vHeight;
+    
+    // 가로 슬라이드의 경우 높이를 거의 다 쓰도록 설정 (컨트롤러 제외 100px)
+    const targetAreaW = clientWidth * 0.95;
+    const targetAreaH = clientHeight - 120; 
+
+    // aspectRatio는 (너비*2)/높이 임. 한 페이지 비율은 aspectRatio / 2
+    const singlePageRatio = aspectRatio / 2;
+
+    // 1. 높이 기준으로 맞춤 (가장 크게 보임)
+    let h = targetAreaH;
+    let w = h * singlePageRatio;
+
+    // 2. 만약 펼친 너비가 화면을 넘어가면 너비 기준으로 줄임
+    if (w * 2 > targetAreaW) {
+      w = targetAreaW / 2;
+      h = w / singlePageRatio;
+    }
+
+    // 최소 크기 보장 (너무 작아지는 것 방지)
+    const finalW = Math.max(w, 200);
+    const finalH = Math.max(h, 150);
+
+    setDimensions({
+      width: Math.floor(finalW),
+      height: Math.floor(finalH)
+    });
+  }, [aspectRatio]);
+
+  useEffect(() => {
+    // 즉시 실행 및 지연 실행으로 렌더링 타이밍 보장
+    calculateBestFit();
+    const timers = [
+      setTimeout(calculateBestFit, 50),
+      setTimeout(calculateBestFit, 500),
+      setTimeout(calculateBestFit, 2000)
+    ];
+    
+    window.addEventListener('resize', calculateBestFit);
+    return () => {
+      window.removeEventListener('resize', calculateBestFit);
+      timers.forEach(t => clearTimeout(t));
+    };
+  }, [calculateBestFit]);
 
   const onPageFlip = useCallback((e: any) => {
     setCurrentPage(e.data);
@@ -28,107 +74,121 @@ export const FlipBookViewer: React.FC<FlipBookViewerProps> = ({ book, setBook })
   }, [setBook]);
 
   return (
-    <div className="relative flex flex-col w-full h-full items-center justify-start select-none overflow-hidden">
+    <div className="relative w-full h-full flex flex-col bg-black overflow-hidden">
       
-      {/* 뷰어 스테이지: 상단 여백을 줄이고 영역을 가득 채움 */}
+      {/* 책 영역: dimensions가 0이어도 컨테이너는 렌더링하여 ref를 잡을 수 있게 함 */}
       <div 
-        className="book-container flex-1 flex items-center justify-center w-full transition-transform duration-500 ease-out pt-4 pb-20"
-        style={{ transform: `scale(${zoom})` }}
+        ref={containerRef}
+        className="flex-1 w-full h-full flex items-center justify-center p-2 relative overflow-hidden"
       >
-        <div className="flip-shadow">
-          <HTMLFlipBook
-            width={Math.round(pageWidth)}
-            height={pageHeight}
-            size="stretch"
-            minWidth={315}
-            maxWidth={1200}
-            minHeight={420}
-            maxHeight={1800}
-            maxShadowOpacity={0.4}
-            showCover={true}
-            mobileScrollSupport={true}
-            onFlip={onPageFlip}
-            className="flip-book-canvas"
-            ref={flipBookRef}
-            startPage={0}
-            drawShadow={true}
-            flippingTime={800}
-            usePortrait={false}
-            startZIndex={0}
-            autoSize={true}
-            clickEventForward={true}
-            useMouseEvents={true}
-            swipeDistance={30}
-            showPageCorners={true}
-            disableFlipByClick={false}
+        {dimensions.width > 0 && (
+          <div 
+            className="flip-shadow transition-all duration-500 ease-out origin-center"
+            style={{ 
+              width: dimensions.width * 2, 
+              height: dimensions.height,
+              transform: `scale(${zoom})`
+            }}
           >
-            {pages.map((pageUrl, index) => (
-              <div key={index} className={`page ${index % 2 === 0 ? 'page-left' : 'page-right'}`}>
-                <div className="page-content relative w-full h-full">
-                  <img 
-                    src={pageUrl} 
-                    alt={`Page ${index + 1}`} 
-                    className="w-full h-full object-fill"
-                    loading="lazy"
-                  />
-                  <div className="paper-texture"></div>
-                  <div className="page-spine"></div>
-                  
-                  {/* 페이지 번호: 더 은은하게 변경 */}
-                  <div className={`absolute bottom-3 ${index % 2 === 0 ? 'left-4' : 'right-4'} text-[9px] font-bold text-black/10 uppercase tracking-[0.3em]`}>
-                    PAGE {index + 1}
+            <HTMLFlipBook
+              width={dimensions.width}
+              height={dimensions.height}
+              size="fixed"
+              minWidth={dimensions.width}
+              maxWidth={4000}
+              minHeight={dimensions.height}
+              maxHeight={4000}
+              maxShadowOpacity={0.7}
+              showCover={true}
+              mobileScrollSupport={true}
+              onFlip={onPageFlip}
+              className="flip-book-canvas"
+              ref={flipBookRef}
+              startPage={0}
+              drawShadow={true}
+              flippingTime={1000}
+              usePortrait={false}
+              startZIndex={0}
+              autoSize={false}
+              clickEventForward={true}
+              useMouseEvents={true}
+              swipeDistance={30}
+              showPageCorners={true}
+              disableFlipByClick={false}
+            >
+              {pages.map((pageUrl, index) => (
+                <div key={index} className={`page ${index % 2 === 0 ? 'page-left' : 'page-right'}`}>
+                  <div className="w-full h-full bg-white relative">
+                    <img 
+                      src={pageUrl} 
+                      alt={`Page ${index + 1}`} 
+                      className="w-full h-full object-fill pointer-events-none"
+                    />
+                    <div className="paper-texture"></div>
+                    <div className="page-spine"></div>
+                    <div className={`absolute bottom-4 ${index % 2 === 0 ? 'left-6' : 'right-6'} text-[10px] font-black text-black/20 tracking-widest`}>
+                      {index + 1}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </HTMLFlipBook>
-        </div>
+              ))}
+            </HTMLFlipBook>
+          </div>
+        )}
       </div>
 
-      {/* 플로팅 콤팩트 컨트롤러 (하단에 작게 배치) */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[200] w-auto">
-        <div className="flex items-center gap-6 bg-[#121212]/90 backdrop-blur-2xl border border-white/10 px-6 py-3 rounded-full shadow-[0_20px_60px_rgba(0,0,0,0.8)]">
+      {/* 개선된 하단 리모컨 */}
+      <div className="h-28 w-full flex items-end justify-center pb-6 controls-gradient relative z-[300]">
+        <div className="flex items-center gap-6 bg-[#0f0f0f]/95 backdrop-blur-2xl border border-white/10 px-8 py-3 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.5)] scale-90 md:scale-100">
           
-          {/* Zoom Controls */}
+          {/* Zoom & Fit */}
           <div className="flex items-center gap-3 pr-6 border-r border-white/5">
-            <button onClick={() => setZoom(z => Math.max(0.3, z - 0.05))} className="text-white/40 hover:text-indigo-400 transition-colors p-1.5 hover:bg-white/5 rounded-full">
-               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" /></svg>
+            <button onClick={() => setZoom(z => Math.max(0.1, z - 0.15))} className="text-white/30 hover:text-indigo-400 transition-colors p-1">
+               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M20 12H4" /></svg>
             </button>
-            <span className="text-[13px] font-bold text-indigo-500 w-10 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => setZoom(z => Math.min(1.5, z + 0.05))} className="text-white/40 hover:text-indigo-400 transition-colors p-1.5 hover:bg-white/5 rounded-full">
-               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
+            <button 
+              onClick={() => { setZoom(1.0); calculateBestFit(); }} 
+              className="text-[10px] font-black text-indigo-500 bg-indigo-500/10 px-2 py-1 rounded border border-indigo-500/20 hover:bg-indigo-500 hover:text-white transition-all uppercase"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button onClick={() => setZoom(z => Math.min(5.0, z + 0.15))} className="text-white/30 hover:text-indigo-400 transition-colors p-1">
+               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4" /></svg>
             </button>
           </div>
 
-          {/* Navigation Controls */}
-          <div className="flex items-center gap-5">
+          {/* Navigation */}
+          <div className="flex items-center gap-6">
             <button 
               onClick={() => flipBookRef.current?.pageFlip().flipPrev()}
-              className="p-2.5 bg-white/5 hover:bg-indigo-600 rounded-full text-white/50 hover:text-white transition-all disabled:opacity-5 active:scale-90"
+              className="p-2.5 bg-white/5 hover:bg-indigo-600 rounded-full text-white/40 hover:text-white transition-all disabled:opacity-5 active:scale-90"
               disabled={currentPage === 0}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15 19l-7-7 7-7" /></svg>
             </button>
 
-            <div className="flex items-center gap-2 min-w-[80px] justify-center">
-               <span className="text-xl font-black text-white tabular-nums">{currentPage + 1}</span>
-               <span className="text-white/20 text-sm font-light">/</span>
-               <span className="text-sm font-medium text-white/40 tabular-nums">{totalPages}</span>
+            <div className="flex items-baseline gap-2 min-w-[90px] justify-center">
+               <span className="text-3xl font-black text-white tracking-tighter">{currentPage + 1}</span>
+               <span className="text-white/20 text-[10px] font-black uppercase tracking-widest">/ {totalPages}</span>
             </div>
 
             <button 
               onClick={() => flipBookRef.current?.pageFlip().flipNext()}
-              className="p-2.5 bg-white/5 hover:bg-indigo-600 rounded-full text-white/50 hover:text-white transition-all disabled:opacity-5 active:scale-90"
+              className="p-2.5 bg-white/5 hover:bg-indigo-600 rounded-full text-white/40 hover:text-white transition-all disabled:opacity-5 active:scale-90"
               disabled={currentPage >= totalPages - 1}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
 
-          {/* Fullscreen Tool */}
-          <div className="pl-6 border-l border-white/5">
-             <button onClick={() => document.documentElement.requestFullscreen()} className="text-white/30 hover:text-indigo-400 transition-all p-2 bg-white/5 hover:bg-white/10 rounded-xl">
-               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+          {/* Tools */}
+          <div className="flex items-center gap-4 pl-6 border-l border-white/5">
+             <button 
+                onClick={calculateBestFit} 
+                className="text-white/20 hover:text-indigo-400 transition-all p-2 bg-white/5 rounded-xl"
+                title="Fit to Screen"
+              >
+               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
              </button>
           </div>
         </div>
