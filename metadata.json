@@ -1,0 +1,7 @@
+{
+  "name": "FlipAI - Interactive PDF Bookmarks",
+  "description": "A high-performance interactive flipbook application that transforms PDFs into immersive reading experiences with AI-powered content analysis.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
