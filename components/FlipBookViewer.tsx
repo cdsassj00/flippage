@@ -18,53 +18,38 @@ export const FlipBookViewer: React.FC<FlipBookViewerProps> = ({ book, setBook })
   const { totalPages, pages, aspectRatio } = book;
 
   const calculateBestFit = useCallback(() => {
-    // 컨테이너가 없으면 window 크기라도 사용
     const vWidth = window.innerWidth;
     const vHeight = window.innerHeight;
     
     const clientWidth = containerRef.current?.clientWidth || vWidth;
     const clientHeight = containerRef.current?.clientHeight || vHeight;
     
-    // 가로 슬라이드의 경우 높이를 거의 다 쓰도록 설정 (컨트롤러 제외 100px)
-    const targetAreaW = clientWidth * 0.95;
-    const targetAreaH = clientHeight - 120; 
+    const targetAreaW = clientWidth * 0.94; // 좌우 여백 확보
+    const targetAreaH = clientHeight - 160; 
 
-    // aspectRatio는 (너비*2)/높이 임. 한 페이지 비율은 aspectRatio / 2
     const singlePageRatio = aspectRatio / 2;
 
-    // 1. 높이 기준으로 맞춤 (가장 크게 보임)
     let h = targetAreaH;
     let w = h * singlePageRatio;
 
-    // 2. 만약 펼친 너비가 화면을 넘어가면 너비 기준으로 줄임
     if (w * 2 > targetAreaW) {
       w = targetAreaW / 2;
       h = w / singlePageRatio;
     }
 
-    // 최소 크기 보장 (너무 작아지는 것 방지)
-    const finalW = Math.max(w, 200);
-    const finalH = Math.max(h, 150);
-
     setDimensions({
-      width: Math.floor(finalW),
-      height: Math.floor(finalH)
+      width: Math.floor(Math.max(w, 200)),
+      height: Math.floor(Math.max(h, 150))
     });
   }, [aspectRatio]);
 
   useEffect(() => {
-    // 즉시 실행 및 지연 실행으로 렌더링 타이밍 보장
     calculateBestFit();
-    const timers = [
-      setTimeout(calculateBestFit, 50),
-      setTimeout(calculateBestFit, 500),
-      setTimeout(calculateBestFit, 2000)
-    ];
-    
     window.addEventListener('resize', calculateBestFit);
+    const timers = [setTimeout(calculateBestFit, 100), setTimeout(calculateBestFit, 800)];
     return () => {
       window.removeEventListener('resize', calculateBestFit);
-      timers.forEach(t => clearTimeout(t));
+      timers.forEach(clearTimeout);
     };
   }, [calculateBestFit]);
 
@@ -74,16 +59,15 @@ export const FlipBookViewer: React.FC<FlipBookViewerProps> = ({ book, setBook })
   }, [setBook]);
 
   return (
-    <div className="relative w-full h-full flex flex-col bg-black overflow-hidden">
+    <div className="relative w-full h-full flex flex-col bg-[#030303] overflow-hidden">
       
-      {/* 책 영역: dimensions가 0이어도 컨테이너는 렌더링하여 ref를 잡을 수 있게 함 */}
       <div 
         ref={containerRef}
-        className="flex-1 w-full h-full flex items-center justify-center p-2 relative overflow-hidden"
+        className="flex-1 w-full h-full flex items-center justify-center p-4 relative overflow-hidden"
       >
         {dimensions.width > 0 && (
           <div 
-            className="flip-shadow transition-all duration-500 ease-out origin-center"
+            className="flip-shadow transition-all duration-700 ease-out origin-center"
             style={{ 
               width: dimensions.width * 2, 
               height: dimensions.height,
@@ -98,7 +82,7 @@ export const FlipBookViewer: React.FC<FlipBookViewerProps> = ({ book, setBook })
               maxWidth={4000}
               minHeight={dimensions.height}
               maxHeight={4000}
-              maxShadowOpacity={0.7}
+              maxShadowOpacity={0.5}
               showCover={true}
               mobileScrollSupport={true}
               onFlip={onPageFlip}
@@ -118,16 +102,24 @@ export const FlipBookViewer: React.FC<FlipBookViewerProps> = ({ book, setBook })
             >
               {pages.map((pageUrl, index) => (
                 <div key={index} className={`page ${index % 2 === 0 ? 'page-left' : 'page-right'}`}>
-                  <div className="w-full h-full bg-white relative">
+                  <div className="w-full h-full bg-white relative overflow-hidden">
+                    {/* 원본 페이지 이미지 */}
                     <img 
                       src={pageUrl} 
                       alt={`Page ${index + 1}`} 
                       className="w-full h-full object-fill pointer-events-none"
                     />
+                    
+                    {/* 3D 리얼리즘 레이어 (중앙 접힘부 효과) */}
+                    <div className="page-outer-edge"></div>
+                    <div className="page-crease"></div>
+                    <div className="page-spine-shadow"></div>
+                    <div className="page-curvature-highlight"></div>
                     <div className="paper-texture"></div>
-                    <div className="page-spine"></div>
-                    <div className={`absolute bottom-4 ${index % 2 === 0 ? 'left-6' : 'right-6'} text-[10px] font-black text-black/20 tracking-widest`}>
-                      {index + 1}
+                    
+                    {/* 페이지 번호 (디자인적 요소) */}
+                    <div className={`absolute bottom-6 ${index % 2 === 0 ? 'left-10' : 'right-10'} text-[9px] font-black text-black/20 tracking-[0.3em] z-40 select-none`}>
+                      PAGE {index + 1}
                     </div>
                   </div>
                 </div>
@@ -137,57 +129,47 @@ export const FlipBookViewer: React.FC<FlipBookViewerProps> = ({ book, setBook })
         )}
       </div>
 
-      {/* 개선된 하단 리모컨 */}
-      <div className="h-28 w-full flex items-end justify-center pb-6 controls-gradient relative z-[300]">
-        <div className="flex items-center gap-6 bg-[#0f0f0f]/95 backdrop-blur-2xl border border-white/10 px-8 py-3 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.5)] scale-90 md:scale-100">
+      {/* 강화된 하단 리모컨 */}
+      <div className="h-28 w-full flex items-end justify-center pb-8 controls-gradient relative z-[300]">
+        <div className="flex items-center gap-8 bg-[#0a0a0a]/95 backdrop-blur-3xl border border-white/10 px-10 py-4 rounded-full shadow-[0_30px_100px_rgba(0,0,0,1)] scale-90 md:scale-100">
           
-          {/* Zoom & Fit */}
-          <div className="flex items-center gap-3 pr-6 border-r border-white/5">
-            <button onClick={() => setZoom(z => Math.max(0.1, z - 0.15))} className="text-white/30 hover:text-indigo-400 transition-colors p-1">
+          <div className="flex items-center gap-4 pr-8 border-r border-white/5">
+            <button onClick={() => setZoom(z => Math.max(0.2, z - 0.2))} className="text-white/20 hover:text-indigo-400 transition-colors">
                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M20 12H4" /></svg>
             </button>
-            <button 
-              onClick={() => { setZoom(1.0); calculateBestFit(); }} 
-              className="text-[10px] font-black text-indigo-500 bg-indigo-500/10 px-2 py-1 rounded border border-indigo-500/20 hover:bg-indigo-500 hover:text-white transition-all uppercase"
-            >
+            <button onClick={() => { setZoom(1.0); calculateBestFit(); }} className="text-[11px] font-black text-indigo-500 bg-indigo-500/10 px-4 py-1.5 rounded-xl border border-indigo-500/20 hover:bg-indigo-500 hover:text-white transition-all uppercase tracking-wider">
               {Math.round(zoom * 100)}%
             </button>
-            <button onClick={() => setZoom(z => Math.min(5.0, z + 0.15))} className="text-white/30 hover:text-indigo-400 transition-colors p-1">
+            <button onClick={() => setZoom(z => Math.min(4.0, z + 0.2))} className="text-white/20 hover:text-indigo-400 transition-colors">
                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4" /></svg>
             </button>
           </div>
 
-          {/* Navigation */}
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-8">
             <button 
               onClick={() => flipBookRef.current?.pageFlip().flipPrev()}
-              className="p-2.5 bg-white/5 hover:bg-indigo-600 rounded-full text-white/40 hover:text-white transition-all disabled:opacity-5 active:scale-90"
+              className="p-3 bg-white/5 hover:bg-indigo-600 rounded-2xl text-white/30 hover:text-white transition-all disabled:opacity-5 active:scale-90"
               disabled={currentPage === 0}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15 19l-7-7 7-7" /></svg>
             </button>
 
-            <div className="flex items-baseline gap-2 min-w-[90px] justify-center">
-               <span className="text-3xl font-black text-white tracking-tighter">{currentPage + 1}</span>
-               <span className="text-white/20 text-[10px] font-black uppercase tracking-widest">/ {totalPages}</span>
+            <div className="flex flex-col items-center min-w-[100px]">
+               <span className="text-3xl font-black text-white leading-none tabular-nums tracking-tighter">{currentPage + 1}</span>
+               <span className="text-white/10 text-[9px] font-black uppercase tracking-[0.2em] mt-1">of {totalPages}</span>
             </div>
 
             <button 
               onClick={() => flipBookRef.current?.pageFlip().flipNext()}
-              className="p-2.5 bg-white/5 hover:bg-indigo-600 rounded-full text-white/40 hover:text-white transition-all disabled:opacity-5 active:scale-90"
+              className="p-3 bg-white/5 hover:bg-indigo-600 rounded-2xl text-white/30 hover:text-white transition-all disabled:opacity-5 active:scale-90"
               disabled={currentPage >= totalPages - 1}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
 
-          {/* Tools */}
-          <div className="flex items-center gap-4 pl-6 border-l border-white/5">
-             <button 
-                onClick={calculateBestFit} 
-                className="text-white/20 hover:text-indigo-400 transition-all p-2 bg-white/5 rounded-xl"
-                title="Fit to Screen"
-              >
+          <div className="flex items-center gap-4 pl-8 border-l border-white/5">
+             <button onClick={calculateBestFit} className="text-white/10 hover:text-white transition-all p-2.5 bg-white/5 rounded-2xl" title="Reset View">
                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
              </button>
           </div>
